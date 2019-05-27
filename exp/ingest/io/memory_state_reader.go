@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/historyarchive"
 	"github.com/stellar/go/xdr"
 )
@@ -62,8 +63,19 @@ func (msr *MemoryStateReader) bufferNext() {
 
 	// iterate from newest to oldest bucket and track keys already seen
 	seen := map[string]bool{}
-	for _, hash := range msr.has.Buckets() {
-		if !msr.archive.BucketExists(hash) {
+	buckets, err := msr.has.Buckets()
+	if err != nil {
+		msr.readChan <- readResult{xdr.LedgerEntry{}, errors.Wrap(err, "error getting buckets")}
+		return
+	}
+	for _, hash := range buckets {
+		exists, err := msr.archive.BucketExists(hash)
+		if err != nil {
+			msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("error checking if bucket exists: %s", hash)}
+			return
+		}
+
+		if !exists {
 			msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("bucket hash does not exist: %s", hash)}
 			return
 		}
