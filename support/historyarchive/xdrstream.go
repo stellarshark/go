@@ -64,7 +64,6 @@ func (x *XdrStream) ReadOne(in interface{}) error {
 		} else {
 			return err
 		}
-
 	}
 	nbytes &= 0x7fffffff
 	x.buf.Reset()
