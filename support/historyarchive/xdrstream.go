@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/stellar/go/xdr"
 )
@@ -34,27 +33,6 @@ func NewXdrGzStream(in io.ReadCloser) (*XdrStream, error) {
 		return nil, err
 	}
 	return &XdrStream{rdr: bufReadCloser(rdr), rdr2: in}, nil
-}
-
-func (a *Archive) GetXdrStreamForHash(hash Hash) (*XdrStream, error) {
-	path := fmt.Sprintf(
-		"bucket/%s/bucket-%s.xdr.gz",
-		HashPrefix(hash).Path(),
-		hash.String(),
-	)
-
-	return a.GetXdrStream(path)
-}
-
-func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
-	if !strings.HasSuffix(pth, ".xdr.gz") {
-		return nil, errors.New("File has non-.xdr.gz suffix: " + pth)
-	}
-	rdr, err := a.backend.GetFile(pth)
-	if err != nil {
-		return nil, err
-	}
-	return NewXdrGzStream(rdr)
 }
 
 func HashXdr(x interface{}) (Hash, error) {
@@ -81,11 +59,7 @@ func (x *XdrStream) ReadOne(in interface{}) error {
 	err := binary.Read(x.rdr, binary.BigEndian, &nbytes)
 	if err != nil {
 		x.rdr.Close()
-		if err == io.ErrUnexpectedEOF {
-			return io.EOF
-		} else {
-			return err
-		}
+		return err
 	}
 	nbytes &= 0x7fffffff
 	x.buf.Reset()
