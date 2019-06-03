@@ -59,7 +59,12 @@ func (x *XdrStream) ReadOne(in interface{}) error {
 	err := binary.Read(x.rdr, binary.BigEndian, &nbytes)
 	if err != nil {
 		x.rdr.Close()
-		return err
+		if err == io.ErrUnexpectedEOF {
+			return io.EOF
+		} else {
+			return err
+		}
+
 	}
 	nbytes &= 0x7fffffff
 	x.buf.Reset()
