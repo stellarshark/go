@@ -13,8 +13,8 @@ import (
 
 // readResult is the result of reading a bucket value
 type readResult struct {
-	entry xdr.LedgerEntry
-	e     error
+	entryChange xdr.LedgerEntryChange
+	e           error
 }
 
 // MemoryStateReader is an in-memory streaming implementation that reads ledger entries
@@ -91,7 +91,7 @@ func (msr *MemoryStateReader) streamBuckets() {
 	for _, hashString := range buckets {
 		hash, err := historyarchive.DecodeHash(hashString)
 		if err != nil {
-			msr.readChan <- readResult{xdr.LedgerEntry{}, errors.Wrap(err, "Error decoding bucket hash")}
+			msr.readChan <- readResult{xdr.LedgerEntryChange{}, errors.Wrap(err, "Error decoding bucket hash")}
 			return
 		}
 
@@ -100,7 +100,7 @@ func (msr *MemoryStateReader) streamBuckets() {
 		}
 
 		if !msr.archive.BucketExists(hash) {
-			msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("bucket hash does not exist: %s", hash)}
+			msr.readChan <- readResult{xdr.LedgerEntryChange{}, fmt.Errorf("bucket hash does not exist: %s", hash)}
 			return
 		}
 
@@ -120,7 +120,7 @@ func (msr *MemoryStateReader) streamBucketContents(
 ) bool {
 	rdr, e := msr.archive.GetXdrStreamForHash(hash)
 	if e != nil {
-		msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("cannot get xdr stream for hash '%s': %s", hash.String(), e)}
+		msr.readChan <- readResult{xdr.LedgerEntryChange{}, fmt.Errorf("cannot get xdr stream for hash '%s': %s", hash.String(), e)}
 		return false
 	}
 	defer rdr.Close()
@@ -135,7 +135,7 @@ func (msr *MemoryStateReader) streamBucketContents(
 				// proceed to the next bucket hash
 				return true
 			}
-			msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("Error on XDR record %d of hash '%s': %s", n, hash.String(), e)}
+			msr.readChan <- readResult{xdr.LedgerEntryChange{}, fmt.Errorf("Error on XDR record %d of hash '%s': %s", n, hash.String(), e)}
 			return false
 		}
 
@@ -153,7 +153,7 @@ func (msr *MemoryStateReader) streamBucketContents(
 
 		keyBytes, e := key.MarshalBinary()
 		if e != nil {
-			msr.readChan <- readResult{xdr.LedgerEntry{}, fmt.Errorf("Error marshaling XDR record %d of hash '%s': %s", n, hash.String(), e)}
+			msr.readChan <- readResult{xdr.LedgerEntryChange{}, fmt.Errorf("Error marshaling XDR record %d of hash '%s': %s", n, hash.String(), e)}
 			return false
 		}
 
@@ -162,7 +162,13 @@ func (msr *MemoryStateReader) streamBucketContents(
 		switch entry.Type {
 		case xdr.BucketEntryTypeLiveentry:
 			if !seen[h] && !removed[h] {
-				msr.readChan <- readResult{entry.MustLiveEntry(), nil}
+				// Return LEDGER_ENTRY_STATE changes only now.
+				liveEntry := entry.MustLiveEntry()
+				entryChange := xdr.LedgerEntryChange{
+					Type:  xdr.LedgerEntryChangeTypeLedgerEntryState,
+					State: &liveEntry,
+				}
+				msr.readChan <- readResult{entryChange, nil}
 				seen[h] = true
 			}
 		case xdr.BucketEntryTypeDeadentry:
@@ -186,8 +192,8 @@ func (msr *MemoryStateReader) GetSequence() uint32 {
 	return msr.sequence
 }
 
-// Read returns a new ledger entry on each call, returning io.EOF when the stream ends.
-func (msr *MemoryStateReader) Read() (xdr.LedgerEntry, error) {
+// Read returns a new ledger entry change on each call, returning io.EOF when the stream ends.
+func (msr *MemoryStateReader) Read() (xdr.LedgerEntryChange, error) {
 	msr.streamOnce.Do(func() {
 		go msr.streamBuckets()
 	})
@@ -196,13 +202,13 @@ func (msr *MemoryStateReader) Read() (xdr.LedgerEntry, error) {
 	result, ok := <-msr.readChan
 	if !ok {
 		// when channel is closed then return io.EOF
-		return xdr.LedgerEntry{}, EOF
+		return xdr.LedgerEntryChange{}, EOF
 	}
 
 	if result.e != nil {
-		return xdr.LedgerEntry{}, errors.Wrap(result.e, "Error while reading from buckets")
+		return xdr.LedgerEntryChange{}, errors.Wrap(result.e, "Error while reading from buckets")
 	}
-	return result.entry, nil
+	return result.entryChange, nil
 }
 
 func (msr *MemoryStateReader) close() {

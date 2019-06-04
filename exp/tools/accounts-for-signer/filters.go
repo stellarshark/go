@@ -50,7 +50,7 @@ func (p *EntryTypeFilter) ProcessState(store *pipeline.Store, r io.StateReadClos
 			}
 		}
 
-		if entry.Data.Type == p.Type {
+		if entry.State.Data.Type == p.Type {
 			err := w.Write(entry)
 			if err != nil {
 				if err == io.ErrClosedPipe {
@@ -89,11 +89,11 @@ func (p *AccountsForSignerProcessor) ProcessState(store *pipeline.Store, r io.St
 			}
 		}
 
-		if entry.Data.Type != xdr.LedgerEntryTypeAccount {
+		if entry.State.Data.Type != xdr.LedgerEntryTypeAccount {
 			continue
 		}
 
-		for _, signer := range entry.Data.Account.Signers {
+		for _, signer := range entry.State.Data.Account.Signers {
 			if signer.Key.Address() == p.Signer {
 				err := w.Write(entry)
 				if err != nil {
@@ -146,14 +146,14 @@ func (p *PrintAllProcessor) ProcessState(store *pipeline.Store, r io.StateReadCl
 			}
 		}
 
-		switch entry.Data.Type {
+		switch entry.State.Data.Type {
 		case xdr.LedgerEntryTypeAccount:
 			fmt.Fprintf(
 				f,
 				"%s,%d,%d\n",
-				entry.Data.Account.AccountId.Address(),
-				entry.Data.Account.Balance,
-				entry.Data.Account.SeqNum,
+				entry.State.Data.Account.AccountId.Address(),
+				entry.State.Data.Account.Balance,
+				entry.State.Data.Account.SeqNum,
 			)
 			foundEntries++
 			if foundEntries == 3 {

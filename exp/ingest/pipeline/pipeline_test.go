@@ -41,7 +41,7 @@ func randomSignerKey() xdr.SignerKey {
 	return id
 }
 
-func AccountLedgerEntry() xdr.LedgerEntry {
+func AccountLedgerEntryChange() xdr.LedgerEntryChange {
 	specialSigner := xdr.SignerKey{}
 	err := specialSigner.SetAddress("GCS26OX27PF67V22YYCTBLW3A4PBFAL723QG3X3FQYEL56FXX2C7RX5G")
 	if err != nil {
@@ -53,16 +53,19 @@ func AccountLedgerEntry() xdr.LedgerEntry {
 		signer = randomSignerKey()
 	}
 
-	return xdr.LedgerEntry{
-		LastModifiedLedgerSeq: 0,
-		Data: xdr.LedgerEntryData{
-			Type: xdr.LedgerEntryTypeAccount,
-			Account: &xdr.AccountEntry{
-				AccountId: randomAccountId(),
-				Signers: []xdr.Signer{
-					xdr.Signer{
-						Key:    signer,
-						Weight: 1,
+	return xdr.LedgerEntryChange{
+		Type: xdr.LedgerEntryChangeTypeLedgerEntryState,
+		State: &xdr.LedgerEntry{
+			LastModifiedLedgerSeq: 0,
+			Data: xdr.LedgerEntryData{
+				Type: xdr.LedgerEntryTypeAccount,
+				Account: &xdr.AccountEntry{
+					AccountId: randomAccountId(),
+					Signers: []xdr.Signer{
+						xdr.Signer{
+							Key:    signer,
+							Weight: 1,
+						},
 					},
 				},
 			},
@@ -70,7 +73,7 @@ func AccountLedgerEntry() xdr.LedgerEntry {
 	}
 }
 
-func TrustLineLedgerEntry() xdr.LedgerEntry {
+func TrustLineLedgerEntryChange() xdr.LedgerEntryChange {
 	random, err := keypair.Random()
 	if err != nil {
 		panic(err)
@@ -79,12 +82,15 @@ func TrustLineLedgerEntry() xdr.LedgerEntry {
 	id := xdr.AccountId{}
 	id.SetAddress(random.Address())
 
-	return xdr.LedgerEntry{
-		LastModifiedLedgerSeq: 0,
-		Data: xdr.LedgerEntryData{
-			Type: xdr.LedgerEntryTypeTrustline,
-			TrustLine: &xdr.TrustLineEntry{
-				AccountId: id,
+	return xdr.LedgerEntryChange{
+		Type: xdr.LedgerEntryChangeTypeLedgerEntryState,
+		State: &xdr.LedgerEntry{
+			LastModifiedLedgerSeq: 0,
+			Data: xdr.LedgerEntryData{
+				Type: xdr.LedgerEntryTypeTrustline,
+				TrustLine: &xdr.TrustLineEntry{
+					AccountId: id,
+				},
 			},
 		},
 	}
@@ -131,7 +137,7 @@ func TestBuffer(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < write; i++ {
-			buffer.Write(AccountLedgerEntry())
+			buffer.Write(AccountLedgerEntryChange())
 		}
 		buffer.Close()
 	}()
@@ -180,8 +186,8 @@ func ExamplePipeline(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 1000000; i++ {
-			buffer.Write(AccountLedgerEntry())
-			buffer.Write(TrustLineLedgerEntry())
+			buffer.Write(AccountLedgerEntryChange())
+			buffer.Write(TrustLineLedgerEntryChange())
 		}
 		buffer.Close()
 	}()
@@ -299,7 +305,7 @@ func (p *EntryTypeFilter) ProcessState(store *Store, r io.StateReadCloser, w io.
 			}
 		}
 
-		if entry.Data.Type == p.Type {
+		if entry.State.Data.Type == p.Type {
 			err := w.Write(entry)
 			if err != nil {
 				if err == io.ErrClosedPipe {
@@ -338,11 +344,11 @@ func (p *AccountsForSignerProcessor) ProcessState(store *Store, r io.StateReadCl
 			}
 		}
 
-		if entry.Data.Type != xdr.LedgerEntryTypeAccount {
+		if entry.State.Data.Type != xdr.LedgerEntryTypeAccount {
 			continue
 		}
 
-		for _, signer := range entry.Data.Account.Signers {
+		for _, signer := range entry.State.Data.Account.Signers {
 			if signer.Key.Address() == p.Signer {
 				err := w.Write(entry)
 				if err != nil {
@@ -385,7 +391,7 @@ func (p *CountPrefixProcessor) ProcessState(store *Store, r io.StateReadCloser, 
 			}
 		}
 
-		address := entry.Data.Account.AccountId.Address()
+		address := entry.State.Data.Account.AccountId.Address()
 
 		if strings.HasPrefix(address, p.Prefix) {
 			err := w.Write(entry)
